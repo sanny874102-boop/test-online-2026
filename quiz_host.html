@@ -17,7 +17,7 @@
     .opt-card { background: #1e293b; border: 1px solid #475569; padding: 14px 18px; border-radius: 8px; font-size: 1.3rem; }
     .opt-card.correct { background: #14532d; border-color: #22c55e; color: #86efac; font-weight: bold; }
     
-    /* 詳解看版 */
+    /* 詳解看板 */
     .explain-card { margin-top: 16px; padding: 18px; background: #1e1b4b; border: 2px solid #6366f1; border-radius: 8px; display: none; }
     .explain-card h3 { margin: 0 0 8px 0; color: #a5b4fc; font-size: 1.3rem; }
     .explain-card p { margin: 0; font-size: 1.2rem; line-height: 1.7; color: #e0e7ff; }
@@ -29,7 +29,14 @@
     .btn-green { background: #22c55e; color: white; }
     .btn-red { background: #ef4444; color: white; }
     .btn-gray { background: #475569; color: white; }
+    .btn:hover { opacity: 0.9; }
     
+    /* 管理員控制鎖定樣式 */
+    .admin-locked { display: none !important; }
+    .badge-status { font-size: 0.85rem; padding: 4px 8px; border-radius: 4px; vertical-align: middle; margin-left: 8px; }
+    .badge-locked { background: #64748b; color: #f8fafc; }
+    .badge-unlocked { background: #10b981; color: #ffffff; }
+
     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 1rem; }
     th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #334155; }
     th { color: #94a3b8; }
@@ -40,226 +47,13 @@
     .tab-bar { display: flex; gap: 8px; margin-top: 16px; border-bottom: 1px solid #334155; padding-bottom: 8px; }
     .tab-btn { background: none; border: none; color: #94a3b8; font-size: 1.05rem; font-weight: bold; cursor: pointer; padding: 6px 14px; border-radius: 6px; }
     .tab-btn.active { background: #38bdf8; color: #0f172a; }
-  </style>
-</head>
-<body>
 
-<div class="header">
-  <div>
-    <h1 style="margin: 0; display: inline-block;">🎯 即時互動測驗 - 大螢幕主控台</h1>
-    <div class="q-control">
-      <button id="start-btn" class="btn btn-purple" onclick="startQuiz()">🚀 開始第 1 題</button>
-      <button class="btn btn-gray" onclick="changeQ(-1)">◀ 上一題</button>
-      <span id="current-q-text" style="font-weight: bold; font-size: 1.1rem; color: #38bdf8;">準備中</span>
-      <button class="btn btn-blue" onclick="changeQ(1)">下一題 ▶</button>
-    </div>
-  </div>
-
-  <div>
-    <button class="btn btn-orange" onclick="revealAnswers()">📢 公布本題答案與詳解</button>
-    <button class="btn btn-green" onclick="exportToExcel()">📊 下載成績 Excel</button>
-    <button class="btn btn-red" onclick="resetAll()">⚠️ 清空重設</button>
-  </div>
-</div>
-
-<div class="container">
-  <div class="panel">
-    <h2>📄 題目內容</h2>
-    <div id="q-content" class="question-box">測驗準備中，等待老師開始...</div>
-    <div id="options-box" class="options-grid"></div>
-
-    <div id="explain-box" class="explain-card">
-      <h3>💡 答案詳解</h3>
-      <p id="explain-text"></p>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h2>📱 掃碼加入測驗</h2>
-    <div id="qrcode"></div>
-    <p id="student-url" style="color: #94a3b8; font-size: 0.9rem; text-align: center; word-break: break-all; margin: 4px 0 12px;"></p>
-
-    <h3 style="margin: 8px 0;">👥 已連線玩家 (<span id="player-count" style="color: #38bdf8;">0</span> 人)</h3>
-    <div class="players-box" id="players-list">
-      <span style="color: #64748b;">等待學生掃碼加入...</span>
-    </div>
-
-    <div class="tab-bar">
-      <button id="tab-curr" class="tab-btn active" onclick="switchTab('curr')">🎯 本題作答狀況</button>
-      <button id="tab-total" class="tab-btn" onclick="switchTab('total')">🏆 全場累積排行榜</button>
-    </div>
-
-    <table id="table-curr">
-      <thead><tr><th>姓名</th><th>作答進度</th><th>本題得分</th></tr></thead>
-      <tbody id="curr-tbody"><tr><td colspan="3" style="text-align:center;">等待作答...</td></tr></tbody>
-    </table>
-
-    <table id="table-total" style="display: none;">
-      <thead><tr><th>排名</th><th>姓名</th><th>答對 / 答錯</th><th>累計總分</th></tr></thead>
-      <tbody id="total-tbody"><tr><td colspan="4" style="text-align:center;">等待測驗開始...</td></tr></tbody>
-    </table>
-  </div>
-</div>
-
-<script>
-  // 請填入您的 GAS 部署網址
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbwnOQx_qdEBscySvVE-4laQkpX07PXHS1pJUdRUSirnx8uZI_GdqQSOLJ14r85loIRI/exec";
-  let hostData = null;
-
-  window.onload = function() {
-    const playerUrl = window.location.href.replace(/quiz_host\.html.*$/, 'quiz_student.html');
-    document.getElementById("student-url").innerText = playerUrl;
-    new QRCode(document.getElementById("qrcode"), { text: playerUrl, width: 180, height: 180 });
-    loadData();
-    setInterval(loadData, 3000);
-  };
-
-  async function loadData() {
-    try {
-      const res = await fetch(`${GAS_URL}?action=getHostData&t=${Date.now()}`);
-      hostData = await res.json();
-
-      renderPlayers(hostData.players || []);
-
-      if (hostData.currentQ === 0) {
-        document.getElementById("current-q-text").innerText = "準備中";
-        document.getElementById("q-content").innerText = "🎮 測驗準備中，等待老師開始第 1 題！";
-        document.getElementById("options-box").innerHTML = "";
-        document.getElementById("explain-box").style.display = "none";
-        document.getElementById("start-btn").style.display = "inline-block";
-      } else {
-        document.getElementById("start-btn").style.display = "none";
-        document.getElementById("current-q-text").innerText = `第 ${hostData.currentQ} / ${hostData.totalQuestions} 題 (${hostData.qInfo.type})`;
-        document.getElementById("q-content").innerText = hostData.qInfo.question;
-
-        renderOptions(hostData.qInfo, hostData.isRevealed);
-        
-        if (hostData.isRevealed) {
-          document.getElementById("explain-box").style.display = "block";
-          document.getElementById("explain-text").innerHTML = `<b>正確答案：${hostData.qInfo.correctAnswer}</b><br>${hostData.qInfo.explanation}`;
-        } else {
-          document.getElementById("explain-box").style.display = "none";
-        }
-      }
-
-      renderCurrentQTable(hostData.currentQStats || {}, hostData.isRevealed);
-      renderTotalTable(hostData.totalStats || {});
-    } catch(e) {}
-  }
-
-  function renderOptions(qInfo, isRevealed) {
-    const box = document.getElementById("options-box");
-    box.innerHTML = "";
-
-    if (qInfo.type === "是非") {
-      const isO = (qInfo.correctAnswer === "O");
-      box.innerHTML = `
-        <div class="opt-card ${isRevealed && isO ? 'correct' : ''}">⭕ 正確 ${isRevealed && isO ? '✓ (標準答案)' : ''}</div>
-        <div class="opt-card ${isRevealed && !isO ? 'correct' : ''}">❌ 錯誤 ${isRevealed && !isO ? '✓ (標準答案)' : ''}</div>
-      `;
-    } else {
-      const letters = ["A", "B", "C", "D"];
-      qInfo.options.forEach((opt, idx) => {
-        const isCorrect = (letters[idx] === qInfo.correctAnswer);
-        const div = document.createElement("div");
-        div.className = `opt-card ${isRevealed && isCorrect ? 'correct' : ''}`;
-        div.innerText = `${letters[idx]}. ${opt} ${isRevealed && isCorrect ? '✓ (標準答案)' : ''}`;
-        box.appendChild(div);
-      });
+    /* 密碼黑點遮罩輸入彈窗樣式 */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.75); display: none;
+      justify-content: center; align-items: center; z-index: 9999;
     }
-  }
-
-  function renderPlayers(players) {
-    document.getElementById("player-count").innerText = players.length;
-    const box = document.getElementById("players-list");
-    if (!players.length) return box.innerHTML = `<span style="color: #64748b;">等待學生掃碼加入...</span>`;
-    box.innerHTML = players.map(name => `<span class="player-tag">👤 ${name}</span>`).join("");
-  }
-
-  function renderCurrentQTable(stats, isRevealed) {
-    const thead = document.querySelector("#table-curr thead");
-    const tbody = document.getElementById("curr-tbody");
-
-    if (isRevealed) {
-      thead.innerHTML = `<tr><th>姓名</th><th>學生答案</th><th>判定</th><th>得分</th></tr>`;
-      const list = Object.entries(stats).map(([name, s]) => ({ name, ...s })).sort((a,b) => b.score - a.score);
-      tbody.innerHTML = list.map(item => `
-        <tr>
-          <td><b>${item.name}</b></td>
-          <td>${item.answer || '未作答'}</td>
-          <td style="color:${item.isCorrect ? '#22c55e' : '#ef4444'}; font-weight:bold;">${item.isCorrect ? '✓ 答對' : '✗ 答錯'}</td>
-          <td style="color:#38bdf8; font-weight:bold;">+${item.score}</td>
-        </tr>
-      `).join("");
-    } else {
-      thead.innerHTML = `<tr><th>姓名</th><th>作答進度</th><th>本題得分</th></tr>`;
-      const list = Object.entries(stats).map(([name, s]) => ({ name, ...s }));
-      tbody.innerHTML = list.map(item => `
-        <tr>
-          <td><b>${item.name}</b></td>
-          <td>${item.hasSubmitted ? '<span style="color:#22c55e; font-weight:bold;">✓ 已送出作答</span>' : '<span style="color:#94a3b8;">思考中...</span>'}</td>
-          <td style="color:#64748b;">🔒 待公布結算</td>
-        </tr>
-      `).join("");
-    }
-  }
-
-  function renderTotalTable(totalStats) {
-    const tbody = document.getElementById("total-tbody");
-    const list = Object.entries(totalStats).map(([name, s]) => ({ name, ...s })).sort((a,b) => b.score - a.score);
-    tbody.innerHTML = list.map((item, idx) => `
-      <tr>
-        <td>${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}</td>
-        <td><b>${item.name}</b></td>
-        <td><span style="color:#22c55e;">${item.correctCount}</span> / <span style="color:#ef4444;">${item.wrongCount}</span></td>
-        <td style="color:#38bdf8; font-weight:bold;">${item.score}</td>
-      </tr>
-    `).join("");
-  }
-
-  function switchTab(tab) {
-    document.getElementById("tab-curr").className = `tab-btn ${tab === 'curr' ? 'active' : ''}`;
-    document.getElementById("tab-total").className = `tab-btn ${tab === 'total' ? 'active' : ''}`;
-    document.getElementById("table-curr").style.display = tab === 'curr' ? 'table' : 'none';
-    document.getElementById("table-total").style.display = tab === 'total' ? 'table' : 'none';
-  }
-
-  async function startQuiz() {
-    await fetch(`${GAS_URL}?action=switchQuestion&qIndex=1&t=${Date.now()}`);
-    loadData();
-  }
-
-  async function changeQ(offset) {
-    if (!hostData || hostData.currentQ === 0) return alert("請先開始第 1 題！");
-    const nextQ = hostData.currentQ + offset;
-    if (nextQ < 1 || nextQ > hostData.totalQuestions) return alert("已經沒有更多題目了！");
-    await fetch(`${GAS_URL}?action=switchQuestion&qIndex=${nextQ}&t=${Date.now()}`);
-    loadData();
-  }
-
-  async function revealAnswers() {
-    if (!hostData || hostData.currentQ === 0) return alert("測驗尚未開始！");
-    await fetch(`${GAS_URL}?action=setReveal&t=${Date.now()}`);
-    loadData();
-  }
-
-  function exportToExcel() {
-    if (!hostData || !Object.keys(hostData.totalStats).length) return alert("無資料可匯出！");
-    const exportData = Object.entries(hostData.totalStats).map(([name, stat], idx) => ({
-      "排名": idx + 1, "姓名": name, "答對題數": stat.correctCount, "答錯題數": stat.wrongCount, "總積分": stat.score
-    })).sort((a, b) => b["總積分"] - a["總積分"]);
-
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "測驗成績");
-    XLSX.writeFile(workbook, `測驗成績單_${new Date().toISOString().slice(0,10)}.xlsx`);
-  }
-
-  async function resetAll() {
-    if (!confirm("確定要重設全場測驗並清空所有成績嗎？")) return;
-    await fetch(`${GAS_URL}?action=resetScores&t=${Date.now()}`);
-    loadData();
-  }
-</script>
-</body>
-</html>
+    .modal-box {
+      background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+      padding: 24px;
