@@ -65,7 +65,7 @@
 </div>
 
 <script>
-  // 請填入您的 GAS 部署網址
+  // 已填入您的專屬 Apps Script Web App 網址
   const GAS_URL = "https://script.google.com/macros/s/AKfycbwnOQx_qdEBscySvVE-4laQkpX07PXHS1pJUdRUSirnx8uZI_GdqQSOLJ14r85loIRI/exec";
 
   let studentName = "";
@@ -98,7 +98,6 @@
       const res = await fetch(`${GAS_URL}?action=getCurrentQuestion&t=${Date.now()}`);
       const data = await res.json();
 
-      // 切換新題目
       if (data.qIndex !== currentQIndex) {
         currentQIndex = data.qIndex;
         selectedAns = "";
@@ -115,95 +114,4 @@
           return;
         }
 
-        document.getElementById("q-label").innerText = `第 ${currentQIndex} / ${data.totalQuestions} 題 (${data.type})`;
-        document.getElementById("question-text").innerText = data.question;
-        document.getElementById("my-score").innerText = "作答中...";
-        renderOptions(data.type, data.options);
-      }
-
-      // 當題已公布答案時同步詳解
-      if (currentQIndex > 0 && data.isRevealed) {
-        checkResult(data);
-      }
-    } catch(e) {}
-  }
-
-  function renderOptions(type, options) {
-    const container = document.getElementById("options-container");
-    container.innerHTML = "";
-
-    if (type === "是非") {
-      container.className = "btn-grid btn-tf";
-      container.innerHTML = `
-        <button class="option-btn btn-tf-item" onclick="selectOption('O', this)">⭕</button>
-        <button class="option-btn btn-tf-item" onclick="selectOption('X', this)">❌</button>
-      `;
-    } else {
-      container.className = "btn-grid";
-      const letters = ["A", "B", "C", "D"];
-      options.forEach((opt, idx) => {
-        const btn = document.createElement("button");
-        btn.className = "option-btn";
-        btn.innerText = `${letters[idx]}. ${opt}`;
-        btn.onclick = () => selectOption(letters[idx], btn);
-        container.appendChild(btn);
-      });
-    }
-  }
-
-  function selectOption(ans, btn) {
-    if (hasSubmittedThisQ) return;
-    selectedAns = ans;
-    document.querySelectorAll(".option-btn").forEach(b => b.classList.remove("selected"));
-    btn.classList.add("selected");
-    document.getElementById("submit-btn").disabled = false;
-  }
-
-  async function submitAnswer() {
-    if (!selectedAns || hasSubmittedThisQ) return;
-    const btn = document.getElementById("submit-btn");
-    btn.disabled = true;
-    btn.innerText = "傳送中...";
-
-    try {
-      const res = await fetch(GAS_URL, {
-        method: "POST",
-        body: JSON.stringify({ name: studentName, answer: selectedAns })
-      });
-      const data = await res.json();
-      if (data.success) {
-        hasSubmittedThisQ = true;
-        btn.innerText = `✓ 已送出 (${selectedAns})，等待公布答案`;
-      } else {
-        alert(data.error || "送出失敗");
-        btn.disabled = false;
-      }
-    } catch(e) {
-      alert("連線異常，請重試");
-      btn.disabled = false;
-    }
-  }
-
-  async function checkResult(qData) {
-    const res = await fetch(`${GAS_URL}?action=checkStudentStatus&name=${encodeURIComponent(studentName)}&qIndex=${currentQIndex}&t=${Date.now()}`);
-    const statusData = await res.json();
-
-    if (statusData.isRevealed) {
-      document.getElementById("my-score").innerText = `${statusData.totalScore} 分`;
-      const resultBox = document.getElementById("result-box");
-      resultBox.style.display = "block";
-      resultBox.className = `result-box ${statusData.isCorrect ? 'correct' : 'wrong'}`;
-
-      document.getElementById("result-status").innerText = statusData.isCorrect ? 
-        `🎉 恭喜答對！ (+${statusData.point}分)` : 
-        `❌ 本題答錯囉！ (你的答案：${statusData.myAnswer || '未作答'})`;
-
-      document.getElementById("explanation-text").innerHTML = `
-        <b>標準答案：${qData.correctAnswer}</b><br>
-        ${qData.explanation || '無詳細說明'}
-      `;
-    }
-  }
-</script>
-</body>
-</html>
+        document.getElementById("q
