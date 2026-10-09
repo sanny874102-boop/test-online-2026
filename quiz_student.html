@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>即時互動測驗 - 學生端</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 16px; background-color: #0f172a; color: #1e293b; }
+    .card { background: white; padding: 24px 20px; border-radius: 16px; max-width: 650px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+    h2 { margin-top: 0; text-align: center; color: #0f172a; font-size: 1.6rem; }
+    input[type="text"] { width: 100%; padding: 14px; font-size: 17px; border: 1px solid #cbd5e1; border-radius: 10px; margin-bottom: 14px; }
+    .status-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f1f5f9; border-radius: 10px; font-weight: bold; margin-bottom: 16px; font-size: 1.1rem; }
+    .q-type-badge { background: #3b82f6; color: white; padding: 4px 10px; border-radius: 6px; font-size: 0.9rem; }
+    
+    .question-box { font-size: 1.45rem; line-height: 1.8; font-weight: bold; color: #1e293b; padding: 18px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
+    
+    /* 是非題與選擇題按鈕 */
+    .btn-grid { display: grid; gap: 12px; }
+    .btn-tf { grid-template-columns: 1fr 1fr; }
+    .option-btn { background: white; border: 2px solid #cbd5e1; padding: 16px; border-radius: 12px; font-size: 1.25rem; font-weight: bold; color: #334155; cursor: pointer; transition: 0.2s; text-align: left; }
+    .option-btn:hover { background: #f8fafc; border-color: #94a3b8; }
+    .option-btn.selected { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+    .option-btn.btn-tf-item { text-align: center; font-size: 2rem; padding: 20px; }
+    
+    .submit-btn { width: 100%; margin-top: 20px; padding: 14px; font-size: 1.2rem; font-weight: bold; background: #2563eb; color: white; border: none; border-radius: 10px; cursor: pointer; }
+    .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    /* 詳解與公布解答區 */
+    .result-box { margin-top: 20px; padding: 18px; border-radius: 12px; display: none; }
+    .result-box.correct { background: #dcfce7; border: 2px solid #22c55e; color: #15803d; }
+    .result-box.wrong { background: #fee2e2; border: 2px solid #ef4444; color: #b91c1c; }
+    .explanation-title { font-weight: bold; margin-top: 10px; color: #334155; font-size: 1.05rem; }
+    .explanation-text { color: #475569; line-height: 1.6; margin-top: 4px; font-size: 1.05rem; }
+  </style>
+</head>
+<body>
+
+<div class="card" id="login-view">
+  <h2>🎯 互動測驗系統</h2>
+  <input type="text" id="student-name" placeholder="請輸入姓名或座號（例：01 王小明）">
+  <button class="submit-btn" onclick="joinGame()">進入測驗</button>
+</div>
+
+<div class="card" id="quiz-view" style="display: none;">
+  <div class="status-bar">
+    <div>
+      <span id="display-name"></span>
+      <span class="q-type-badge" id="q-label">準備中</span>
+    </div>
+    <span>總分：<span id="my-score" style="color: #2563eb;">-- 分</span></span>
+  </div>
+
+  <div class="question-box" id="question-text">測驗準備中，等待老師發布題目...</div>
+
+  <div id="options-container" class="btn-grid"></div>
+
+  <button class="submit-btn" id="submit-btn" disabled onclick="submitAnswer()">確認送出答案</button>
+
+  <div class="result-box" id="result-box">
+    <div id="result-status" style="font-size: 1.3rem; font-weight: bold;"></div>
+    <div class="explanation-title">💡 正確答案與詳解：</div>
+    <div class="explanation-text" id="explanation-text"></div>
+  </div>
+</div>
+
+<script>
+  // 請填入您的 GAS 部署網址
+  const GAS_URL = "YOUR_NEW_GAS_WEB_APP_URL";
+
+  let studentName = "";
+  let currentQIndex = -1;
+  let selectedAns = "";
+  let hasSubmittedThisQ = false;
+  let pollingTimer = null;
+
+  async function joinGame() {
+    studentName = document.getElementById("student-name").value.trim();
+    if (!studentName) return alert("請輸入姓名！");
+
+    try {
+      await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify({ action: "login", name: studentName })
+      });
+    } catch(e) {}
+
+    document.getElementById("login-view").style.display = "none";
+    document.getElementById("quiz-view").style.display = "block";
+    document.getElementById("display-name").innerText = studentName;
+
+    syncQuiz();
+    pollingTimer = setInterval(syncQuiz, 3000);
+  }
+
+  async function syncQuiz() {
+    try {
+      const res = await fetch(`${GAS_URL}?action=getCurrentQuestion&t=${Date.now()}`);
+      const data = await res.json();
+
+      // 切換新題目
+      if (data.qIndex !== currentQIndex) {
+        currentQIndex = data.qIndex;
+        selectedAns = "";
+        hasSubmittedThisQ = false;
+        document.getElementById("result-box").style.display = "none";
+        document.getElementById("submit-btn").disabled = true;
+        document.getElementById("submit-btn").innerText = "確認送出答案";
+
+        if (currentQIndex === 0) {
+          document.getElementById("q-label").innerText = "準備中";
+          document.getElementById("question-text").innerText = "🎮 測驗準備中，等待老師開始...";
+          document.getElementById("options-container").innerHTML = "";
+          document.getElementById("my-score").innerText = "-- 分";
+          return;
+        }
+
+        document.getElementById("q-label").innerText = `第 ${currentQIndex} / ${data.totalQuestions} 題 (${data.type})`;
+        document.getElementById("question-text").innerText = data.question;
+        document.getElementById("my-score").innerText = "作答中...";
+        renderOptions(data.type, data.options);
+      }
+
+      // 當題已公布答案時同步詳解
+      if (currentQIndex > 0 && data.isRevealed) {
+        checkResult(data);
+      }
+    } catch(e) {}
+  }
+
+  function renderOptions(type, options) {
+    const container = document.getElementById("options-container");
+    container.innerHTML = "";
+
+    if (type === "是非") {
+      container.className = "btn-grid btn-tf";
+      container.innerHTML = `
+        <button class="option-btn btn-tf-item" onclick="selectOption('O', this)">⭕</button>
+        <button class="option-btn btn-tf-item" onclick="selectOption('X', this)">❌</button>
+      `;
+    } else {
+      container.className = "btn-grid";
+      const letters = ["A", "B", "C", "D"];
+      options.forEach((opt, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "option-btn";
+        btn.innerText = `${letters[idx]}. ${opt}`;
+        btn.onclick = () => selectOption(letters[idx], btn);
+        container.appendChild(btn);
+      });
+    }
+  }
+
+  function selectOption(ans, btn) {
+    if (hasSubmittedThisQ) return;
+    selectedAns = ans;
+    document.querySelectorAll(".option-btn").forEach(b => b.classList.remove("selected"));
+    btn.classList.add("selected");
+    document.getElementById("submit-btn").disabled = false;
+  }
+
+  async function submitAnswer() {
+    if (!selectedAns || hasSubmittedThisQ) return;
+    const btn = document.getElementById("submit-btn");
+    btn.disabled = true;
+    btn.innerText = "傳送中...";
+
+    try {
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify({ name: studentName, answer: selectedAns })
+      });
+      const data = await res.json();
+      if (data.success) {
+        hasSubmittedThisQ = true;
+        btn.innerText = `✓ 已送出 (${selectedAns})，等待公布答案`;
+      } else {
+        alert(data.error || "送出失敗");
+        btn.disabled = false;
+      }
+    } catch(e) {
+      alert("連線異常，請重試");
+      btn.disabled = false;
+    }
+  }
+
+  async function checkResult(qData) {
+    const res = await fetch(`${GAS_URL}?action=checkStudentStatus&name=${encodeURIComponent(studentName)}&qIndex=${currentQIndex}&t=${Date.now()}`);
+    const statusData = await res.json();
+
+    if (statusData.isRevealed) {
+      document.getElementById("my-score").innerText = `${statusData.totalScore} 分`;
+      const resultBox = document.getElementById("result-box");
+      resultBox.style.display = "block";
+      resultBox.className = `result-box ${statusData.isCorrect ? 'correct' : 'wrong'}`;
+
+      document.getElementById("result-status").innerText = statusData.isCorrect ? 
+        `🎉 恭喜答對！ (+${statusData.point}分)` : 
+        `❌ 本題答錯囉！ (你的答案：${statusData.myAnswer || '未作答'})`;
+
+      document.getElementById("explanation-text").innerHTML = `
+        <b>標準答案：${qData.correctAnswer}</b><br>
+        ${qData.explanation || '無詳細說明'}
+      `;
+    }
+  }
+</script>
+</body>
+</html>
